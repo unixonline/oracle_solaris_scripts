@@ -1,0 +1,94 @@
+#!/bin/bash
+
+### Name        : HBA Status
+### Author      : unixonline.ir
+### Date        : 2022/12/25
+### Description : Prints Oracle Solaris system HBAs status including WWN, online/offline and controller address
+### Environment : Oracle Solaris
+
+verbose=0
+while getopts v i
+do
+  case $i in
+
+    v)
+      verbose=1
+      ;;
+    \?)
+      echo "Invalid option"
+      exit 1
+      ;;
+  esac
+done
+
+fcinfo hba-port | grep "^HBA Port WWN" | awk -F":" '{print $2}' | sed "s/ //g" > /tmp/wwn_list.$$
+powermt display 2>/dev/null | grep "^[0-9]" | awk '{print $1"|"$2}' > /tmp/powermt.out.$$
+
+if [ $verbose -eq 1 ];then
+  echo "WWN              | Device      | Status | Bus  | Disks | Tapes | emlxs/qlc | fp"
+else
+  echo "WWN              | Device      | Status | Bus  | Address | emlxs/qlc | fp"
+fi
+while read WWN;do
+
+  if [ $verbose -eq 1 ];then
+    fcinfo remote-port -lsp $WWN 2>/dev/null | egrep "rdsk|rmt" > /tmp/remote_out.$$
+    DISK_COUNT=`grep "rdsk" /tmp/remote_out.$$ | wc -l | sed "s/ //g"`
+    TAPE_COUNT=`grep "rmt" /tmp/remote_out.$$ | wc -l | sed "s/ //g"`
+  fi
+
+  fcinfo hba-port $WWN > /tmp/port_info.$$
+  DEVICE=`cat /tmp/port_info.$$ | grep "OS Device Name" | awk -F":" '{print $2}' | sed "s/ //g"`
+  STATUS=`cat /tmp/port_info.$$ | grep "State" | awk -F":" '{print $2}' | sed "s/ //g"`
+
+  if [ `echo $DEVICE | grep devices | wc -l` -gt 0 ];then
+    ADDRESS="$DEVICE"
+  else
+    ADDRESS=`ls -l $DEVICE | awk -F"->" '{print $2}' | sed "s/> ..\/..//"`
+  fi
+
+  HBA_EMC_BUS="----"
+  while read line;do
+    EMC_BUS=`echo $line | awk -F"|" '{print $1}'`
+    EMC_PATH=`echo $line | awk -F"|" '{print $2}'`
+    
+    if [ `echo $ADDRESS | grep $EMC_PATH | wc -l` -eq 1 ];then
+      HBA_EMC_BUS=$EMC_BUS
+      break
+    fi
+
+  done < /tmp/powermt.out.$$
+
+  CARD=""
+  if [ `echo $ADDRESS | grep -i emlxs | wc -l` -gt 0 ];then
+    EMLXS=`echo $ADDRESS | sed -e "s|/devices||" -e "s|/fp.*||"`
+    EMLXS_NO=`grep "\"${EMLXS}\"" /etc/path_to_inst | awk '{print $2}'`
+    CARD="emlxs ${EMLXS_NO}"
+  elif [ `echo $ADDRESS | grep -i qlc | wc -l` -gt 0 ];then
+    QLC=`echo $ADDRESS | sed -e "s|/devices||" -e "s|/fp.*||"`
+    QLC_NO=`grep "\"${QLC}\"" /etc/path_to_inst | awk '{print $2}'`
+    CARD="qlc ${QLC_NO}"
+  elif [ `echo $ADDRESS | grep -i lpfc | wc -l` -gt 0 ];then
+    LPFC=`echo $ADDRESS | sed -e "s|/devices||" -e "s|/fp.*||"`
+    LPFC_NO=`grep "\"${LPFC}\"" /etc/path_to_inst | awk '{print $2}'`
+    LPFC_TYPE=`grep "\"${LPFC}\"" /etc/path_to_inst | awk '{print $3}' | sed "s/\"//g"`
+    CARD="$LPFC_TYPE ${LPFC_NO}"
+  fi
+
+
+  FP=`echo $ADDRESS | sed -e "s|/devices||" -e "s/:fc//"`
+  FP_NO=`grep "\"$FP\"" /etc/path_to_inst | awk '{print $2}'`
+  
+  if [ $verbose -eq 1 ];then
+    echo "$WWN | $DEVICE | $STATUS | $HBA_EMC_BUS | $DISK_COUNT | $TAPE_COUNT | $CARD | fp ${FP_NO}"
+  else
+    echo "$WWN | $DEVICE | $STATUS | $HBA_EMC_BUS | $ADDRESS | $CARD | fp ${FP_NO}"
+  fi
+
+done < /tmp/wwn_list.$$
+
+
+[ -f /tmp/wwn_list.$$ ] && rm -f /tmp/wwn_list.$$
+[ -f /tmp/port_info.$$ ] && rm -f /tmp/port_info.$$
+[ -f /tmp/powermt.out.$$ ] && rm -f /tmp/powermt.out.$$
+[ -f /tmp/remote_out.$$ ] && rm -f /tmp/remote_out.$$
