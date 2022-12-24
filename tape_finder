@@ -1,0 +1,39 @@
+#!/bin/bash
+
+### Name        : Tape Finder
+### Author      : unixonline.ir
+### Date        : 2022/12/25
+### Description : Finds tape drivers assigned to the Oracle Solaris system using fcinfo utility
+### 		          If it cannot find all the drivers, try running "devfsadm -c tape" first.
+### Environment : Oracle Solaris
+
+fcinfo hba-port | grep "^HBA Port WWN" | awk -F":" '{print $2}' | sed "s/ //g" > /tmp/wwn_list.$$
+
+#echo "WWN | Device | State | Address"
+while read WWN;do
+
+  fcinfo hba-port $WWN > /tmp/port_info.$$
+  DEVICE=`cat /tmp/port_info.$$ | grep "OS Device Name" | awk -F":" '{print $2}' | sed "s/ //g"`
+  STATE=`cat /tmp/port_info.$$ | grep "State" | awk -F":" '{print $2}' | sed "s/ //g"`
+  ADDRESS=`ls -l $DEVICE | awk -F"->" '{print $2}' | sed "s/> ..\/..//"`
+  
+  #echo "$WWN | $DEVICE | $STATE | $ADDRESS"
+  if [ "$STATE" = "online" ];then
+    fcinfo remote-port -ls -p $WWN 2>/dev/null | egrep "rmt|Remote Port WWN" > /tmp/rmt.$$
+
+    TAPE_COUNT=`cat /tmp/rmt.$$ | grep "rmt" | wc -l`
+    if [ $TAPE_COUNT -gt 0 ];then
+      echo "WWN : $WWN"
+      echo "Device : $DEVICE"
+      echo "Tape count : $TAPE_COUNT"
+      cat /tmp/rmt.$$ | sed "s/Remote Port WWN: //"
+      echo "------------------------" 	
+    fi
+  fi
+
+done < /tmp/wwn_list.$$
+
+
+rm -f /tmp/wwn_list.$$
+rm -f /tmp/port_info.$$
+rm -f /tmp/rmt.$$
