@@ -1,0 +1,45 @@
+#!/bin/bash
+
+### Name        : find_latest_os_patch
+### Author      : unixonline.ir
+### Date        : 2022/12/25
+### Description : Finds the latest os patch applied to a Linux/Solaris system
+### Environment : Oracle Solaris, Linux OS
+
+OSTYPE=`uname -s`
+HOST=`uname -n`
+
+if [ "$OSTYPE" == "SunOS" ]; then
+
+  mkdir -p /tmp/latest_patch/Solaris
+  LOG=/tmp/latest_patch/Solaris/$HOST
+
+  for i in `ls  -tro /var/sadm/patch|awk '{print $8}'`
+  do
+    TYPE=`cat /var/sadm/patch/$i/README* 2>/dev/null | grep Topic | awk '{print $4}'`
+    if [ "$TYPE" = "kernel" ];then
+      KERNEL_RELEASE_DATE=`cat /var/sadm/patch/$i/README* 2>/dev/null | grep -v "^$" | tail -1 | awk '{print $7","$8$9}'`
+      KERNEL_RELEASE_DATE="$i - $KERNEL_RELEASE_DATE"
+    else
+      APP_RELEASE_DATE=`ls -tro /var/sadm/patch/$i/log 2>/dev/null | awk '{print $5"-"$6"-"$7}'`
+      APP_RELEASE_DATE="$i - $APP_RELEASE_DATE"
+    fi
+  done
+  echo "| $HOST | $KERNEL_RELEASE_DATE | $APP_RELEASE_DATE | |" > $LOG
+else
+
+  mkdir -p /tmp/latest_patch/Linux
+  LOG=/tmp/latest_patch/Linux/$HOST
+
+  PATCHES=`rpm -qa |grep "^kernel"`
+  LAST=`rpm -q $PATCHES --last|head -1|awk '{print $1}'|sed 's/  / /'`
+  BUILD_DATE=`rpm -q $LAST --info|egrep "Build Date"|sed 's/  / /'`
+  INSTALL_DATE=`rpm -q $LAST --info|egrep "Install Date"|sed 's/  / /'`
+  LATEST_APP_PATCH=`rpm -qa --last | head -1`
+  if [ -a /etc/redhat-release ];then
+    RELEASE=`cat /etc/redhat-release`
+  else
+    RELEASE=`cat /etc/SuSE-release|tr '\n' ' '`
+  fi
+  echo "| $BUILD_DATE | $INSTALL_DATE | $LATEST_APP_PATCH | `uname -r` | $RELEASE |" > $LOG
+fi
