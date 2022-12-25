@@ -4,7 +4,7 @@
 ### Author      : unixonline.ir
 ### Date        : 2022/12/25
 ### Description : A shell script to examine installed perl modules
-### Environment : Oracle Solaris
+### Environment : Oracle Solaris / Linux OS
 
     eval 'exec /usr/bin/perl -S $0 ${1+"$@"}'
 	if $running_under_some_shell;
